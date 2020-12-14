@@ -3,16 +3,17 @@ USE pick;
 DROP PROCEDURE IF EXISTS GET_TEACHER_FROM_FLOOR;
 DROP PROCEDURE IF EXISTS SET_TEACHER;
 
+DROP PROCEDURE IF EXISTS DIVIDE_STATE_FROM_PERIOD;
 DROP PROCEDURE IF EXISTS SET_STATE;
 
 DROP PROCEDURE IF EXISTS CREATE_DEFAULT_ATTENDANCE;
 
-SET @@TODAY = CURDATE();
+SET @TODAY = CURDATE();
 
 DELIMITER $$
-CREATE PROCEDURE GET_TEACHER_FROM_FLOOR(IN floor INT, OUT teacher VARCHAR(16))
+CREATE PROCEDURE GET_TEACHER_FROM_FLOOR(IN current_floor INT, OUT teacher VARCHAR(16))
     BEGIN
-        CASE floor
+        CASE current_floor
             WHEN 1 THEN
                 SET teacher = NULL;
             WHEN 2 THEN
@@ -22,54 +23,58 @@ CREATE PROCEDURE GET_TEACHER_FROM_FLOOR(IN floor INT, OUT teacher VARCHAR(16))
             WHEN 4 THEN
                 SELECT forth_floor_teacher_id FROM activity WHERE date = @TODAY INTO teacher;
         END CASE;
-    end $$
+    END $$
 DELIMITER ;
 
 DELIMITER $$
-CREATE PROCEDURE SET_TEACHER(IN schedule VARCHAR(28), OUT teacher VARCHAR(16))
+CREATE PROCEDURE SET_TEACHER(IN student_number CHAR(4), OUT teacher VARCHAR(16))
     BEGIN
-        DECLARE floor INT DEFAULT 0;
+        DECLARE current_floor INT DEFAULT 0;
 
-        IF schedule = 'club' THEN
+        DECLARE today_schedule VARCHAR(28);
+
+        SELECT schedule FROM activity WHERE date = @TODAY INTO today_schedule;
+
+        IF today_schedule = 'club' THEN
             SELECT floor FROM club_location
-                WHERE location = (SELECT location FROM club INNER JOIN student
-                    ON student.club_name = club.name) INTO floor;
-        ELSEIF schedule = 'self-study' THEN
-            SELECT floor FROM class INNER JOIN student WHERE student.class_name = class.name INTO floor;
-        ELSEIF schedule = 'after-school' THEN
+                WHERE location = (SELECT location from club
+                    WHERE name = (SELECT club_name FROM student WHERE num = student_number)) INTO current_floor;
+        ELSEIF today_schedule = 'self-study' THEN
+            SELECT floor FROM class WHERE name = (SELECT class_name FROM student WHERE num = student_number) INTO current_floor;
+        ELSEIF today_schedule = 'after-school' THEN
             SET teacher = NULL;
         END IF;
 
-        IF floor != 0 THEN
-            CALL GET_TEACHER_FROM_FLOOR(floor, teacher);
-        END IF $$
+        IF current_floor != 0 THEN
+            CALL GET_TEACHER_FROM_FLOOR(current_floor, teacher);
+        END IF;
     end $$
 DELIMITER ;
 
 DELIMITER $$
 CREATE PROCEDURE DIVIDE_STATE_FROM_PERIOD(IN pre_absence_id INT, OUT state_7 CHAR(4), state_8 CHAR(4), state_9 CHAR(4), state_10 CHAR(4))
-BEGIN
-    DECLARE start_period INT;
-    DECLARE end_period INT;
+    BEGIN
+        DECLARE _start_period INT;
+        DECLARE _end_period INT;
 
-    SELECT start_period FROM pre_absence WHERE id = pre_absence_id INTO start_period;
-    SELECT end_period FROM pre_absence WHERE id = pre_absence_id INTO end_period;
+        SELECT _start_period FROM pre_absence WHERE id = pre_absence_id INTO _start_period;
+        SELECT _end_period FROM pre_absence WHERE id = pre_absence_id INTO _end_period;
 
-    WHILE start_period <= end_period DO
-        CASE start_period
-            WHEN 7 THEN
-                SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_7;
-            WHEN 8 THEN
-                SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_8;
-            WHEN 9 THEN
-                SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_9;
-            WHEN 10 THEN
-                SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_10;
-        END CASE;
+        WHILE _start_period <= _end_period DO
+            CASE _start_period
+                WHEN 7 THEN
+                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_7;
+                WHEN 8 THEN
+                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_8;
+                WHEN 9 THEN
+                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_9;
+                WHEN 10 THEN
+                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_10;
+            END CASE;
 
-        SET start_period = start_period + 1;
-    END WHILE;
-END $$
+            SET _start_period = _start_period + 1;
+        END WHILE;
+    END $$
 DELIMITER ;
 
 DELIMITER $$
@@ -98,16 +103,15 @@ CREATE PROCEDURE SET_STATE(IN student_number CHAR(4), OUT state_7 CHAR(4), state
         END WHILE;
 
         DROP TABLE tmp_absence;
-    end $$
+    END $$
 DELIMITER ;
 
 DELIMITER $$
-CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day CHAR(3))
+CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT)
     BEGIN
         DECLARE student_count INT DEFAULT 0;
 
         DECLARE all_student_number INT;
-        DECLARE schedule VARCHAR(28);
 
         DECLARE student_number CHAR(4);
         DECLARE teacher VARCHAR(16);
@@ -118,13 +122,27 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day CHAR(3))
         DECLARE state_10 CHAR(4) DEFAULT '출석';
 
         SELECT COUNT(*) FROM student INTO all_student_number;
-        SELECT schedule FROM activity WHERE date = @TODAY INTO schedule;
+        IF day = 0 THEN
+            SET day = DAYOFWEEK(@TODAY);
+        END IF;
 
         WHILE student_count < all_student_number DO
             SELECT num FROM student LIMIT student_count, 1 INTO student_number;
 
-            CALL SET_TEACHER(schedule, teacher);
+            CALL SET_TEACHER(student_number, teacher);
             CALL SET_STATE(student_number, state_7, state_8, state_9, state_10);
+
+            iF day = 6 THEN
+                INSERT INTO attendance (date, student_num, period, teacher_id, state)
+                    VALUES (@TODAY, student_number, 7, teacher, state_7);
+            END IF;
+
+            INSERT INTO attendance (date, student_num, period, teacher_id, state)
+                    VALUES (@TODAY, student_number, 8, teacher, state_8);
+            INSERT INTO attendance (date, student_num, period, teacher_id, state)
+                    VALUES (@TODAY, student_number, 9, teacher, state_9);
+            INSERT INTO attendance (date, student_num, period, teacher_id, state)
+                    VALUES (@TODAY, student_number, 10, teacher, state_10);
 
             SET student_count = student_count + 1;
         END WHILE;
