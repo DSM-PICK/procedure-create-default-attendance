@@ -6,9 +6,8 @@ DROP PROCEDURE IF EXISTS SET_TEACHER;
 DROP PROCEDURE IF EXISTS DIVIDE_STATE_FROM_PERIOD;
 DROP PROCEDURE IF EXISTS SET_STATE;
 
+DROP PROCEDURE IF EXISTS SET_DEFAULT_STATE;
 DROP PROCEDURE IF EXISTS CREATE_DEFAULT_ATTENDANCE;
-
-SET @TODAY = CURDATE();
 
 DELIMITER $$
 CREATE PROCEDURE GET_TEACHER_FROM_FLOOR(IN current_floor INT, OUT teacher VARCHAR(16))
@@ -52,24 +51,28 @@ CREATE PROCEDURE SET_TEACHER(IN student_number CHAR(4), OUT teacher VARCHAR(16))
 DELIMITER ;
 
 DELIMITER $$
-CREATE PROCEDURE DIVIDE_STATE_FROM_PERIOD(IN pre_absence_id INT, OUT state_7 CHAR(4), state_8 CHAR(4), state_9 CHAR(4), state_10 CHAR(4))
+CREATE PROCEDURE DIVIDE_STATE_FROM_PERIOD(IN pre_absence_id INT)
     BEGIN
+        DECLARE tmp_state CHAR(4) DEFAULT NULL;
+
         DECLARE _start_period INT;
         DECLARE _end_period INT;
 
-        SELECT _start_period FROM pre_absence WHERE id = pre_absence_id INTO _start_period;
-        SELECT _end_period FROM pre_absence WHERE id = pre_absence_id INTO _end_period;
+        SELECT start_period FROM tmp_absence WHERE id = pre_absence_id INTO _start_period;
+        SELECT end_period FROM tmp_absence WHERE id = pre_absence_id INTO _end_period;
+        SELECT state FROM tmp_absence WHERE id = pre_absence_id INTO tmp_state;
 
         WHILE _start_period <= _end_period DO
             CASE _start_period
                 WHEN 7 THEN
-                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_7;
+                    SET @STATE_7 = tmp_state;
                 WHEN 8 THEN
-                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_8;
+                    SET @STATE_8 = tmp_state;
                 WHEN 9 THEN
-                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_9;
+                    SET @STATE_9 = tmp_state;
                 WHEN 10 THEN
-                    SELECT state FROM pre_absence WHERE id = pre_absence_id INTO state_10;
+                    SET @STATE_10 = tmp_state;
+                ELSE BEGIN END;
             END CASE;
 
             SET _start_period = _start_period + 1;
@@ -78,7 +81,7 @@ CREATE PROCEDURE DIVIDE_STATE_FROM_PERIOD(IN pre_absence_id INT, OUT state_7 CHA
 DELIMITER ;
 
 DELIMITER $$
-CREATE PROCEDURE SET_STATE(IN student_number CHAR(4), OUT state_7 CHAR(4), state_8 CHAR(4), state_9 CHAR(4), state_10 CHAR(4))
+CREATE PROCEDURE SET_STATE(IN student_number CHAR(4))
     BEGIN
         DECLARE pre_absence_count INT DEFAULT 0;
 
@@ -86,23 +89,31 @@ CREATE PROCEDURE SET_STATE(IN student_number CHAR(4), OUT state_7 CHAR(4), state
 
         DECLARE pre_absence_id INT;
 
-        CREATE TEMPORARY TABLE tmp_absence(id INT, start_period INT, end_period INT, state CHAR(4));
-
         INSERT INTO tmp_absence (SELECT id, start_period, end_period, state FROM pre_absence
                                     WHERE student_num = student_number AND
-                                                        @TODAY BETWEEN start_date AND end_date);
+                                          @TODAY BETWEEN start_date AND end_date);
 
         SELECT COUNT(*) FROM tmp_absence INTO all_pre_absence_number;
 
         WHILE pre_absence_count < all_pre_absence_number DO
             SELECT id FROM tmp_absence LIMIT pre_absence_count, 1 INTO pre_absence_id;
 
-            CALL DIVIDE_STATE_FROM_PERIOD(pre_absence_id, state_7, state_8, state_9, state_10);
+            CALL DIVIDE_STATE_FROM_PERIOD(pre_absence_id);
 
             SET pre_absence_count = pre_absence_count + 1;
         END WHILE;
 
-        DROP TABLE tmp_absence;
+        DELETE FROM tmp_absence WHERE TRUE;
+    END $$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE SET_DEFAULT_STATE()
+    BEGIN
+        SET @STATE_7 = '출석';
+        SET @STATE_8 = '출석';
+        SET @STATE_9 = '출석';
+        SET @STATE_10 = '출석';
     END $$
 DELIMITER ;
 
@@ -116,12 +127,13 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT)
         DECLARE student_number CHAR(4);
         DECLARE teacher VARCHAR(16);
 
-        DECLARE state_7 CHAR(4) DEFAULT '출석';
-        DECLARE state_8 CHAR(4) DEFAULT '출석';
-        DECLARE state_9 CHAR(4) DEFAULT '출석';
-        DECLARE state_10 CHAR(4) DEFAULT '출석';
+        SET @TODAY = CURDATE();
+
+        DROP TABLE IF EXISTS tmp_absence;
+        CREATE TEMPORARY TABLE tmp_absence(id INT, start_period INT, end_period INT, state CHAR(4));
 
         SELECT COUNT(*) FROM student INTO all_student_number;
+
         IF day = 0 THEN
             SET day = DAYOFWEEK(@TODAY);
         END IF;
@@ -130,21 +142,25 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT)
             SELECT num FROM student LIMIT student_count, 1 INTO student_number;
 
             CALL SET_TEACHER(student_number, teacher);
-            CALL SET_STATE(student_number, state_7, state_8, state_9, state_10);
+            CALL SET_STATE(student_number);
 
-            iF day = 6 THEN
+            IF day = 6 THEN
                 INSERT INTO attendance (date, student_num, period, teacher_id, state)
-                    VALUES (@TODAY, student_number, 7, teacher, state_7);
+                    VALUES (@TODAY, student_number, 7, teacher, @STATE_7);
             END IF;
 
             INSERT INTO attendance (date, student_num, period, teacher_id, state)
-                    VALUES (@TODAY, student_number, 8, teacher, state_8);
+                    VALUES (@TODAY, student_number, 8, teacher, @STATE_8);
             INSERT INTO attendance (date, student_num, period, teacher_id, state)
-                    VALUES (@TODAY, student_number, 9, teacher, state_9);
+                    VALUES (@TODAY, student_number, 9, teacher, @STATE_9);
             INSERT INTO attendance (date, student_num, period, teacher_id, state)
-                    VALUES (@TODAY, student_number, 10, teacher, state_10);
+                    VALUES (@TODAY, student_number, 10, teacher, @STATE_10);
+
+            CALL SET_DEFAULT_STATE();
 
             SET student_count = student_count + 1;
         END WHILE;
+
+        DROP TABLE tmp_absence;
     END $$
 DELIMITER ;
