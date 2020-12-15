@@ -127,6 +127,8 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT)
         DECLARE student_number CHAR(4);
         DECLARE teacher VARCHAR(16);
 
+        CALL SET_DEFAULT_STATE();
+
         SET @TODAY = CURDATE();
 
         DROP TABLE IF EXISTS tmp_absence;
