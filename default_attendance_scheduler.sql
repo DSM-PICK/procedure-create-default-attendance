@@ -1,0 +1,10 @@
+SET GLOBAL event_scheduler = ON;
+
+DROP EVENT IF EXISTS default_attendance;
+CREATE EVENT IF NOT EXISTS default_attendance
+    ON SCHEDULE
+        EVERY 1 DAY STARTS CONCAT(CURDATE() + INTERVAL 1 DAY, ' ', '00:00:00')
+    ON COMPLETION PRESERVE ENABLE
+        COMMENT '기본 출석 데이터 삽입 스케줄러'
+    DO
+        CALL CREATE_DEFAULT_ATTENDANCE(0)
