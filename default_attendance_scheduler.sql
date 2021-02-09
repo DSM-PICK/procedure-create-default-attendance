@@ -9,10 +9,6 @@ CREATE EVENT IF NOT EXISTS default_attendance
         COMMENT '기본 출석 데이터 삽입 스케줄러'
     DO
     BEGIN
-        DECLARE today INT DEFAULT DAYOFWEEK(CURDATE());
-
-        IF today != 1 AND today != 7 THEN
-            CALL CREATE_DEFAULT_ATTENDANCE(0);
-        END IF;
+        CALL CREATE_DEFAULT_ATTENDANCE(0);
     END $$
 DELIMITER ;
