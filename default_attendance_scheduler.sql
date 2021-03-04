@@ -8,6 +8,6 @@ CREATE EVENT IF NOT EXISTS default_attendance
         COMMENT '기본 출석 데이터 삽입 스케줄러'
     DO
     BEGIN
-        CALL CREATE_DEFAULT_ATTENDANCE(0);
+        CALL CREATE_DEFAULT_ATTENDANCE(0, false);
     END $$
 DELIMITER ;
