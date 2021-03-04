@@ -129,7 +129,7 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT)
 
         CALL SET_DEFAULT_STATE();
 
-        SET @TODAY = CURDATE();
+        SET @TODAY = CURDATE() + INTERVAL 1 DAY;
 
         DROP TABLE IF EXISTS tmp_absence;
         CREATE TEMPORARY TABLE tmp_absence(id INT, start_period INT, end_period INT, state CHAR(4));
