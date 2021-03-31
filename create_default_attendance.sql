@@ -47,7 +47,7 @@ CREATE PROCEDURE SET_TEACHER(IN student_number CHAR(4), OUT teacher VARCHAR(16))
         IF current_floor != 0 THEN
             CALL GET_TEACHER_FROM_FLOOR(current_floor, teacher);
         END IF;
-    end $$
+    END $$
 DELIMITER ;
 
 DELIMITER $$
@@ -83,11 +83,21 @@ DELIMITER ;
 DELIMITER $$
 CREATE PROCEDURE SET_STATE(IN student_number CHAR(4))
     BEGIN
+        DECLARE is_replenishment TINYINT(1);
+
         DECLARE pre_absence_count INT DEFAULT 0;
 
         DECLARE all_pre_absence_number INT;
 
         DECLARE pre_absence_id INT;
+
+        SELECT is_replenishment FROM student INTO is_replenishment;
+        IF (@WEEKDAY = 2 OR @WEEKDAY = 4) AND is_replenishment THEN
+            SET @STATE_7 = '기초학력';
+            SET @STATE_8 = '기초학력';
+            SET @STATE_9 = '기초학력';
+            SET @STATE_10 = '기초학력';
+        END IF;
 
         INSERT INTO tmp_absence (SELECT id, start_period, end_period, state FROM pre_absence
                                     WHERE student_num = student_number AND
@@ -143,6 +153,8 @@ CREATE PROCEDURE CREATE_DEFAULT_ATTENDANCE (IN day INT, is_today bool)
         IF day = 0 THEN
             SET day = DAYOFWEEK(@TODAY);
         END IF;
+
+        SET @WEEKDAY = day;
 
         WHILE student_count < all_student_number DO
             SELECT num FROM student LIMIT student_count, 1 INTO student_number;
